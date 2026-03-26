@@ -1,4 +1,4 @@
-# homelab-monitoring
+# homelab
 
 Flux v2 GitOps manifests for deploying `kube-prometheus-stack` (Prometheus + Grafana + Alertmanager) into a home lab Kubernetes cluster.
 
@@ -35,9 +35,44 @@ infrastructure/monitoring/
     └── kustomization.yaml
 ```
 
+## Cluster Setup (Ansible)
+
+Before deploying the monitoring stack, the Kubernetes cluster needs to be bootstrapped. Full instructions are in [`ansible/README.md`](ansible/README.md).
+
+**Quick reference:**
+
+```bash
+# 1. Verify SSH connectivity to all nodes
+ansible -i ansible/inventory/hosts.yml all -m ping
+
+# 2. Run the full bootstrap playbook (idempotent)
+ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml
+
+# 3. Copy kubeconfig locally
+scp nvidia@spark-01:~/.kube/config ~/.kube/config
+kubectl get nodes   # both nodes should show Ready
+```
+
+The playbook runs four roles in order:
+
+| Role | What it does |
+|------|-------------|
+| `bootstrap` | Loads kernel modules, disables swap, installs containerd + kubeadm/kubelet/kubectl |
+| `nvidia` | Installs nvidia-container-toolkit, sets NVIDIA as the default containerd runtime |
+| `kubeadm-init` | Initialises the control-plane on `spark-01`, installs Flannel CNI |
+| `kubeadm-join` | Joins `spark-02` as a worker node |
+
+To re-run a single role:
+
+```bash
+ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml --tags nvidia
+```
+
+---
+
 ## Prerequisites
 
-- Kubernetes cluster (k3s, kind, kubeadm, etc.)
+- Kubernetes cluster bootstrapped via Ansible (see above) or equivalent
 - Flux v2 installed (`flux bootstrap` or `flux install`)
 - `kubectl` configured for your cluster
 
