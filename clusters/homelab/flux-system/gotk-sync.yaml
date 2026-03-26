@@ -14,6 +14,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  url: <REPO_URL>   # <-- Replace with your git repo URL
+  url: https://github.com/elizabetht/homelab
   ref:
     branch: main
