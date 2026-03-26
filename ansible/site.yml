@@ -1,0 +1,34 @@
+---
+# Full cluster bootstrap playbook.
+# Run order:
+#   1. bootstrap         — OS prereqs, containerd, kubeadm/kubelet/kubectl
+#   2. nvidia            — NVIDIA Container Toolkit, containerd runtime config
+#   3. kubeadm-init      — init control-plane, install CNI, generate join token
+#   4. kubeadm-join      — join worker nodes to cluster
+#   5. controller-setup  — install Helm/Helmfile, CRDs, Envoy Gateway, Kuadrant,
+#                          llm-d, Magpie TTS, and AIGatewayRoute on the controller
+
+- name: Bootstrap all nodes
+  hosts: cluster
+  become: true
+  roles:
+    - bootstrap
+    - nvidia
+
+- name: Initialise control-plane
+  hosts: control_plane
+  become: true
+  roles:
+    - kubeadm-init
+
+- name: Join worker nodes
+  hosts: workers
+  become: true
+  roles:
+    - kubeadm-join
+
+- name: Configure controller (post-k8s application stack)
+  hosts: control_plane
+  become: true
+  roles:
+    - controller-setup

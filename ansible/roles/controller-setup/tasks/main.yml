@@ -1,0 +1,314 @@
+---
+# controller-setup — runs on the control-plane node after kubeadm-init.
+# Installs: Helm, Helmfile, Gateway API CRDs, Envoy Gateway + AI Gateway,
+#           Kuadrant, llm-d (via Helmfile), services, and AIGatewayRoute.
+# All tasks are idempotent — safe to re-run.
+
+# ── Helm ───────────────────────────────────────────────────────────────────────
+- name: Check if helm is installed
+  command: helm version --short
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Download and install Helm {{ helm_version }}
+  when: helm_check.rc != 0
+  block:
+    - name: Download Helm installer
+      get_url:
+        url: "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3"
+        dest: /tmp/get-helm.sh
+        mode: "0700"
+
+    - name: Install Helm
+      command: /tmp/get-helm.sh
+      environment:
+        DESIRED_VERSION: "{{ helm_version }}"
+
+# ── Helmfile ───────────────────────────────────────────────────────────────────
+- name: Check if helmfile is installed
+  command: helmfile version
+  register: helmfile_check
+  changed_when: false
+  failed_when: false
+
+- name: Install helmfile {{ helmfile_version }}
+  when: helmfile_check.rc != 0
+  block:
+    - name: Download helmfile binary
+      get_url:
+        url: "https://github.com/helmfile/helmfile/releases/download/{{ helmfile_version }}/helmfile_linux_amd64.tar.gz"
+        dest: /tmp/helmfile.tar.gz
+
+    - name: Extract helmfile
+      unarchive:
+        src: /tmp/helmfile.tar.gz
+        dest: /usr/local/bin
+        include: helmfile
+        remote_src: true
+        mode: "0755"
+
+# ── Gateway API CRDs ───────────────────────────────────────────────────────────
+- name: Install Gateway API CRDs ({{ gateway_api_version }})
+  command: >
+    kubectl apply -f
+    https://github.com/kubernetes-sigs/gateway-api/releases/download/{{ gateway_api_version }}/standard-install.yaml
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: gw_api_crds
+  changed_when: "'configured' in gw_api_crds.stdout or 'created' in gw_api_crds.stdout"
+
+- name: Install Gateway API Inference Extension CRDs ({{ inference_extension_version }})
+  command: >
+    kubectl apply -f
+    https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/{{ inference_extension_version }}/manifests.yaml
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: inf_ext_crds
+  changed_when: "'configured' in inf_ext_crds.stdout or 'created' in inf_ext_crds.stdout"
+
+- name: Install Envoy AI Gateway CRDs ({{ ai_gateway_version }})
+  command: >
+    helm upgrade --install aieg-crd
+    oci://docker.io/envoyproxy/ai-gateway-crds-helm
+    --version {{ ai_gateway_version }}
+    --namespace envoy-ai-gateway-system
+    --create-namespace
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+
+- name: Verify Gateway API CRDs
+  command: kubectl get crd gateways.gateway.networking.k8s.io inferencepools.inference.networking.k8s.io
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+# ── Redis (global rate limiting backend) ───────────────────────────────────────
+- name: Create redis-system namespace
+  command: >
+    kubectl create namespace redis-system --dry-run=client -o yaml | kubectl apply -f -
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+- name: Deploy Redis for rate limiting
+  shell: |
+    kubectl apply -f - <<'EOF'
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: redis
+      namespace: redis-system
+      labels:
+        app: redis
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: redis
+      template:
+        metadata:
+          labels:
+            app: redis
+        spec:
+          containers:
+          - name: redis
+            image: redis:7-alpine
+            ports:
+            - containerPort: 6379
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 256Mi
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: redis
+      namespace: redis-system
+    spec:
+      selector:
+        app: redis
+      ports:
+      - port: 6379
+        targetPort: 6379
+    EOF
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: redis_deploy
+  changed_when: "'configured' in redis_deploy.stdout or 'created' in redis_deploy.stdout"
+
+# ── Envoy Gateway + AI Gateway ─────────────────────────────────────────────────
+- name: Install Envoy Gateway {{ envoy_gateway_version }} with AI Gateway addons
+  command: >
+    helm upgrade --install eg
+    oci://docker.io/envoyproxy/gateway-helm
+    --version {{ envoy_gateway_version }}
+    --namespace envoy-gateway-system
+    --create-namespace
+    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/{{ ai_gateway_version }}/manifests/envoy-gateway-values.yaml
+    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/{{ ai_gateway_version }}/examples/token_ratelimit/envoy-gateway-values-addon.yaml
+    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/{{ ai_gateway_version }}/examples/inference-pool/envoy-gateway-values-addon.yaml
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+
+- name: Wait for Envoy Gateway to be ready
+  command: >
+    kubectl wait --timeout=5m -n envoy-gateway-system
+    deployment/envoy-gateway --for=condition=Available
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+- name: Install Envoy AI Gateway controller {{ ai_gateway_version }}
+  command: >
+    helm upgrade --install aieg
+    oci://docker.io/envoyproxy/ai-gateway-helm
+    --version {{ ai_gateway_version }}
+    --namespace envoy-ai-gateway-system
+    --create-namespace
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+
+- name: Wait for AI Gateway controller to be ready
+  command: >
+    kubectl wait --timeout=2m -n envoy-ai-gateway-system
+    deployment/ai-gateway-controller --for=condition=Available
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+# ── Kuadrant ───────────────────────────────────────────────────────────────────
+- name: Add Kuadrant Helm repo
+  command: helm repo add kuadrant https://kuadrant.io/helm-charts/
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+- name: Update Helm repos
+  command: helm repo update
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+- name: Install Kuadrant Operator
+  command: >
+    helm upgrade --install kuadrant-operator kuadrant/kuadrant-operator
+    --create-namespace -n kuadrant-system
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+
+- name: Wait for Kuadrant Operator to be ready
+  command: >
+    kubectl wait --timeout=5m -n kuadrant-system
+    deployment/kuadrant-operator-controller-manager --for=condition=Available
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+- name: Create Kuadrant instance
+  shell: |
+    kubectl apply -f - <<'EOF'
+    apiVersion: kuadrant.io/v1beta1
+    kind: Kuadrant
+    metadata:
+      name: kuadrant
+      namespace: kuadrant-system
+    EOF
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kuadrant_cr
+  changed_when: "'configured' in kuadrant_cr.stdout or 'created' in kuadrant_cr.stdout"
+
+- name: Wait for Kuadrant components (Authorino + Limitador)
+  command: >
+    kubectl wait --timeout=5m -n kuadrant-system
+    deployment/{{ item }} --for=condition=Available
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  loop:
+    - authorino
+    - limitador
+  changed_when: false
+  failed_when: false
+
+# ── llm-d ─────────────────────────────────────────────────────────────────────
+- name: Create token-labs namespace
+  command: >
+    kubectl create namespace token-labs --dry-run=client -o yaml | kubectl apply -f -
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+
+- name: Deploy llm-d via Helmfile
+  command: helmfile apply
+  args:
+    chdir: "{{ deploy_dir }}/llm-d"
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+
+- name: Wait for llm-d EPP to be ready
+  command: >
+    kubectl wait --timeout=5m -n token-labs
+    deployment/llm-d-epp --for=condition=Available
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+  failed_when: false
+
+# ── Services (Magpie TTS, etc.) ────────────────────────────────────────────────
+- name: Deploy Magpie TTS
+  command: kubectl apply -f {{ deploy_dir }}/magpie-tts/
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: magpie_deploy
+  changed_when: "'configured' in magpie_deploy.stdout or 'created' in magpie_deploy.stdout"
+
+- name: Wait for Magpie TTS to be ready
+  command: >
+    kubectl wait --timeout=3m -n token-labs
+    deployment/magpie-tts --for=condition=Available
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
+  failed_when: false
+
+# ── AIGatewayRoute ─────────────────────────────────────────────────────────────
+- name: Deploy Gateway resources (GatewayClass, Gateway, AIGatewayRoute)
+  command: kubectl apply -f {{ deploy_dir }}/gateway/
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: gw_route
+  changed_when: "'configured' in gw_route.stdout or 'created' in gw_route.stdout"
+
+- name: Verify AIGatewayRoute
+  command: kubectl get aigatewayroute -n token-labs
+  become_user: "{{ ansible_user }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  changed_when: false
