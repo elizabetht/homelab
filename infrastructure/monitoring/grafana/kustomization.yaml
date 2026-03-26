@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+resources:
+  - grafana-secret.yaml
+  # Uncomment below only if using standalone Grafana (grafana.enabled: false in prometheus/values.yaml)
+  # - helmrelease.yaml

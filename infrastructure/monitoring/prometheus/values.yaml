@@ -1,0 +1,108 @@
+# kube-prometheus-stack homelab values
+# Tuned for low resource usage on a home lab cluster
+
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false         # disable if etcd metrics not exposed
+    configReloaders: true
+    general: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubeControllerManager: false  # disable if not exposed
+    kubelet: true
+    kubeProxy: false              # disable if not exposed
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeSchedulerAlerting: false  # disable if not exposed
+    kubeSchedulerRecording: false
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+    # Persistent storage - uncomment to enable
+    # storage:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: local-path
+    #       accessModes: [ReadWriteOnce]
+    #       resources:
+    #         requests:
+    #           storage: 5Gi
+
+grafana:
+  enabled: true
+  adminPassword: ""   # Leave empty — set via Secret (see grafana-secret.yaml)
+  admin:
+    existingSecret: grafana-admin-secret
+    userKey: admin-user
+    passwordKey: admin-password
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  # Persistent storage - uncomment to enable
+  # persistence:
+  #   enabled: true
+  #   storageClassName: local-path
+  #   size: 5Gi
+  sidecar:
+    dashboards:
+      enabled: true
+    datasources:
+      enabled: true
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+    # Persistent storage - uncomment to enable
+    # storageSpec:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: local-path
+    #       accessModes: [ReadWriteOnce]
+    #       resources:
+    #         requests:
+    #           storage: 20Gi
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi

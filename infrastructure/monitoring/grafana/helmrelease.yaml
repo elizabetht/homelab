@@ -1,0 +1,47 @@
+# NOTE: Grafana is already bundled in kube-prometheus-stack.
+# This HelmRelease is provided as an OPTIONAL standalone Grafana deployment.
+# Only apply this if you disabled grafana in the kube-prometheus-stack values
+# (set grafana.enabled: false there first).
+#
+# To use standalone Grafana instead:
+#   1. Set grafana.enabled: false in prometheus/values.yaml
+#   2. Uncomment and apply this file
+#   3. Add the grafana HelmRepository source to clusters/homelab/monitoring/sources/
+
+# apiVersion: helm.toolkit.fluxcd.io/v2
+# kind: HelmRelease
+# metadata:
+#   name: grafana
+#   namespace: monitoring
+# spec:
+#   interval: 1h
+#   chart:
+#     spec:
+#       chart: grafana
+#       version: ">=7.0.0 <8.0.0"
+#       sourceRef:
+#         kind: HelmRepository
+#         name: grafana
+#         namespace: monitoring
+#       interval: 1h
+#   values:
+#     admin:
+#       existingSecret: grafana-admin-secret
+#       userKey: admin-user
+#       passwordKey: admin-password
+#     resources:
+#       requests:
+#         cpu: 50m
+#         memory: 128Mi
+#       limits:
+#         memory: 256Mi
+#     persistence:
+#       enabled: false   # set to true and configure storageClassName for persistence
+#     datasources:
+#       datasources.yaml:
+#         apiVersion: 1
+#         datasources:
+#           - name: Prometheus
+#             type: prometheus
+#             url: http://kube-prometheus-stack-prometheus:9090
+#             isDefault: true

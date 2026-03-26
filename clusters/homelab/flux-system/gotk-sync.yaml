@@ -1,0 +1,19 @@
+# This file is a placeholder. Replace <REPO_URL> with your actual git repo URL.
+# After bootstrapping Flux, it will manage this file automatically.
+#
+# To bootstrap Flux manually:
+#   flux bootstrap git \
+#     --url=<REPO_URL> \
+#     --branch=main \
+#     --path=clusters/homelab
+#
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: homelab-monitoring
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: <REPO_URL>   # <-- Replace with your git repo URL
+  ref:
+    branch: main
