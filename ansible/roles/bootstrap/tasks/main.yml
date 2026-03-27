@@ -100,10 +100,8 @@
     update_cache: true
 
 - name: Reinstall kubernetes-cni to ensure CNI binaries are present
-  apt:
-    name: kubernetes-cni
-    state: present
-    reinstall: true
+  command: apt-get install --reinstall -y kubernetes-cni
+  changed_when: false
 
 - name: Pin kubeadm, kubelet, kubectl versions
   dpkg_selections:
