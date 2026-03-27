@@ -37,9 +37,6 @@ spec:
       enabled: false  # Already installed on host via Ansible
     devicePlugin:
       enabled: true
-      config:
-        name: time-slicing-config
-        default: any
     dcgm:
       enabled: true
     dcgmExporter:
