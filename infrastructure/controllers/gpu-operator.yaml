@@ -14,7 +14,7 @@ spec:
   chart:
     spec:
       chart: gpu-operator
-      version: "v24.9.x"
+      version: "v25.10.x"
       sourceRef:
         kind: HelmRepository
         name: nvidia
