@@ -13,6 +13,11 @@
   become: true
   roles:
     - bootstrap
+
+- name: Install NVIDIA Container Toolkit on GPU nodes
+  hosts: workers
+  become: true
+  roles:
     - nvidia
 
 - name: Initialise control-plane

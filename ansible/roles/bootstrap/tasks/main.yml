@@ -1,4 +1,10 @@
 ---
+# ── Remove broken apt repos that block cache updates ───────────────────────────
+- name: Disable NVIDIA AI Workbench repo (expired GPG key)
+  file:
+    path: /etc/apt/sources.list.d/ai-workbench-desktop.sources
+    state: absent
+
 # ── Kernel modules ─────────────────────────────────────────────────────────────
 - name: Load required kernel modules now
   community.general.modprobe:
