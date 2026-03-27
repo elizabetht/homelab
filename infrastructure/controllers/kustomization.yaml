@@ -7,4 +7,3 @@ resources:
   - longhorn.yaml
   # GPU support
   - gpu-operator.yaml
-  - nvidia-dra-driver.yaml
