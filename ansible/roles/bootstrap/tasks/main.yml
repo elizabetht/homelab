@@ -1,4 +1,10 @@
 ---
+# ── Remove conflicting Kubernetes installs ─────────────────────────────────────
+- name: Stop and remove microk8s if present (conflicts with kubeadm ports)
+  shell: snap stop microk8s && snap remove microk8s --purge
+  failed_when: false
+  changed_when: false
+
 # ── Remove broken apt repos that block cache updates ───────────────────────────
 - name: Disable NVIDIA AI Workbench repo (expired GPG key)
   file:
