@@ -39,11 +39,19 @@
   environment:
     KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
 
+- name: Restart containerd and kubelet to ensure CNI initialises
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - containerd
+    - kubelet
+
 - name: Wait for control-plane node to be Ready
   command: >
     kubectl wait node/{{ inventory_hostname }}
     --for=condition=Ready
-    --timeout=5m
+    --timeout=10m
   become_user: "{{ ansible_user }}"
   environment:
     KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"

@@ -89,14 +89,21 @@
     filename: kubernetes
     state: present
 
-- name: Install kubeadm, kubelet, kubectl
+- name: Install kubeadm, kubelet, kubectl and CNI plugins
   apt:
     name:
       - kubeadm
       - kubelet
       - kubectl
+      - kubernetes-cni
     state: present
     update_cache: true
+
+- name: Reinstall kubernetes-cni to ensure CNI binaries are present
+  apt:
+    name: kubernetes-cni
+    state: present
+    reinstall: true
 
 - name: Pin kubeadm, kubelet, kubectl versions
   dpkg_selections:
