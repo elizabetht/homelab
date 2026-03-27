@@ -34,7 +34,7 @@ spec:
     driver:
       enabled: false  # Driver already installed on host via Ansible
     toolkit:
-      enabled: true
+      enabled: false  # Already installed on host via Ansible
     devicePlugin:
       enabled: true
       config:
