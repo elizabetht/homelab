@@ -10,7 +10,7 @@
     kubeadm init
     --pod-network-cidr={{ pod_cidr }}
     --service-cidr={{ service_cidr }}
-    --kubernetes-version={{ kubernetes_version }}
+    --kubernetes-version={{ kubeadm_kubernetes_version }}
     --cri-socket=unix:///run/containerd/containerd.sock
   when: not kubeconfig_stat.stat.exists
   register: kubeadm_init_output
