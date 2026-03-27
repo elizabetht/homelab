@@ -39,6 +39,10 @@
     name: "containerd={{ containerd_version }}"
     state: present
     update_cache: true
+  retries: 3
+  delay: 10
+  register: apt_result
+  until: apt_result is succeeded
 
 - name: Create containerd config directory
   file:
