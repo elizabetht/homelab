@@ -48,3 +48,20 @@ spec:
     name: flux-system
   dependsOn:
     - name: infrastructure
+---
+# ARC controller + runner scale sets — depends on infrastructure for GPU operator CRDs
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: arc
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  path: ./infrastructure/arc
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: infrastructure

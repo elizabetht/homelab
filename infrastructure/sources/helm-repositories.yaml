@@ -25,3 +25,13 @@ metadata:
 spec:
   interval: 10m0s
   url: https://helm.ngc.nvidia.com/nvidia
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: arc
+  namespace: flux-system
+spec:
+  type: oci
+  interval: 10m
+  url: oci://ghcr.io/actions/actions-runner-controller-charts

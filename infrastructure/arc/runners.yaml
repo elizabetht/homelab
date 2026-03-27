@@ -1,0 +1,93 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-runners
+---
+# Runner scale set for elizabetht/inference-images
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: arc-inference-images
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: arc-controller
+  chart:
+    spec:
+      chart: gha-runner-scale-set
+      version: "0.14.0"
+      sourceRef:
+        kind: HelmRepository
+        name: arc
+        namespace: flux-system
+      interval: 10m
+  targetNamespace: arc-runners
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    githubConfigUrl: "https://github.com/elizabetht/inference-images"
+    githubConfigSecret: arc-github-pat
+    runnerScaleSetName: arc-inference-images
+    minRunners: 0
+    maxRunners: 2
+    containerMode:
+      type: "dind"
+    template:
+      spec:
+        nodeSelector:
+          nvidia.com/gpu.present: "true"
+        tolerations:
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
+---
+# Runner scale set for elizabetht/token-labs
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: arc-token-labs
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: arc-controller
+  chart:
+    spec:
+      chart: gha-runner-scale-set
+      version: "0.14.0"
+      sourceRef:
+        kind: HelmRepository
+        name: arc
+        namespace: flux-system
+      interval: 10m
+  targetNamespace: arc-runners
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    githubConfigUrl: "https://github.com/elizabetht/token-labs"
+    githubConfigSecret: arc-github-pat
+    runnerScaleSetName: arc-token-labs
+    minRunners: 0
+    maxRunners: 2
+    containerMode:
+      type: "dind"
+    template:
+      spec:
+        nodeSelector:
+          nvidia.com/gpu.present: "true"
+        tolerations:
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
