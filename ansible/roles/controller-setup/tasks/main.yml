@@ -89,8 +89,7 @@
 
 # ── Redis (global rate limiting backend) ───────────────────────────────────────
 - name: Create redis-system namespace
-  command: >
-    kubectl create namespace redis-system --dry-run=client -o yaml | kubectl apply -f -
+  shell: kubectl create namespace redis-system --dry-run=client -o yaml | kubectl apply -f -
   become_user: "{{ ansible_user }}"
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
@@ -253,8 +252,7 @@
 
 # ── llm-d ─────────────────────────────────────────────────────────────────────
 - name: Create token-labs namespace
-  command: >
-    kubectl create namespace token-labs --dry-run=client -o yaml | kubectl apply -f -
+  shell: kubectl create namespace token-labs --dry-run=client -o yaml | kubectl apply -f -
   become_user: "{{ ansible_user }}"
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
