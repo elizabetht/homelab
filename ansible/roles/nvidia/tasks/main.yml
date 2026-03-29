@@ -37,6 +37,66 @@
 - name: Flush handlers (restart containerd before validation)
   meta: flush_handlers
 
+# ── CDI spec + toolkit-ready (lost on reboot — /run and /var/run are tmpfs) ───
+- name: Install nvidia-cdi-setup systemd service
+  copy:
+    dest: /etc/systemd/system/nvidia-cdi-setup.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=NVIDIA CDI spec and toolkit-ready setup
+      After=network.target
+      Before=containerd.service kubelet.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/bash -c 'mkdir -p /run/nvidia/validations /var/run/cdi && touch /run/nvidia/validations/toolkit-ready && nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml'
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable and start nvidia-cdi-setup service
+  systemd:
+    name: nvidia-cdi-setup
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# ── inotify limits (k8s + gpu-operator exhaust defaults) ──────────────────────
+- name: Set inotify limits
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop:
+    - { key: fs.inotify.max_user_instances, value: "1024" }
+    - { key: fs.inotify.max_user_watches,   value: "524288" }
+
+# ── Swap (GB10 unified memory — model loading peaks beyond physical RAM) ───────
+- name: Create and activate swap files
+  shell: |
+    if [ ! -f {{ item.path }} ]; then
+      fallocate -l {{ item.size }} {{ item.path }}
+      chmod 600 {{ item.path }}
+      mkswap {{ item.path }}
+    fi
+    swapon {{ item.path }} 2>/dev/null || true
+  loop:
+    - { path: /swapfile2, size: 32G }
+    - { path: /swapfile3, size: 128G }
+
+- name: Persist swap files in fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "{{ item }} none swap sw 0 0"
+    state: present
+  loop:
+    - /swapfile2
+    - /swapfile3
+
 # ── Validate ───────────────────────────────────────────────────────────────────
 - name: Verify nvidia-smi works on the host
   command: nvidia-smi --query-gpu=name --format=csv,noheader
