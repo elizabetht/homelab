@@ -63,6 +63,15 @@
     state: started
     daemon_reload: true
 
+# ── kubelet: allow swap (GB10 needs large swap for model loading) ─────────────
+- name: Set KUBELET_EXTRA_ARGS to allow swap
+  lineinfile:
+    path: /etc/default/kubelet
+    regexp: '^KUBELET_EXTRA_ARGS='
+    line: 'KUBELET_EXTRA_ARGS=--fail-swap-on=false'
+    create: true
+  notify: restart kubelet
+
 # ── inotify limits (k8s + gpu-operator exhaust defaults) ──────────────────────
 - name: Set inotify limits
   sysctl:
