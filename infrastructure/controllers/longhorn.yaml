@@ -31,6 +31,17 @@ spec:
   values:
     defaultSettings:
       defaultReplicaCount: 1
+      # Model-cache PVCs are provisioned at 100-300Gi but hold 25-35GB of
+      # weights. At the default 100%, Longhorn charges the full provisioned
+      # size against a node's scheduling capacity, so spark-02 sat at 66%
+      # scheduled while holding 90GB of real data. 200% lets thin volumes
+      # over-subscribe.
+      #
+      # This is a bet that model caches never fill their declared size. If one
+      # does, the node can run out of physical disk and volumes go faulted --
+      # storage-minimal-available-percentage (10) is the backstop that stops
+      # scheduling new replicas once free space drops below 10%.
+      storageOverProvisioningPercentage: 200
       defaultDataPath: /var/lib/longhorn
       defaultDataLocality: best-effort
     persistence:
