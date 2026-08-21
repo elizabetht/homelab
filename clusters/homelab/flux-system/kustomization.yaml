@@ -3,3 +3,23 @@ kind: Kustomization
 resources:
 - gotk-components.yaml
 - gotk-sync.yaml
+patches:
+# Pin the Flux controllers to the control-plane node: off the GPU nodes where
+# they compete with vLLM for memory, and co-located with the API server whose
+# leader-election lease they keep failing to renew (218 restarts, exit 1).
+- target:
+    kind: Deployment
+    labelSelector: app.kubernetes.io/part-of=flux
+  patch: |
+    # 1. Permission: cancel the control-plane taint.
+    - op: add
+      path: /spec/template/spec/tolerations
+      value:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+    # 2. Placement: steer onto `controller`. Merges into the existing
+    #    nodeSelector map rather than replacing it.
+    - op: add
+      path: /spec/template/spec/nodeSelector/kubernetes.io~1hostname
+      value: controller
