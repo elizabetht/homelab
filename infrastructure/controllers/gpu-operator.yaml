@@ -31,6 +31,26 @@ spec:
   values:
     operator:
       defaultRuntime: containerd
+      # Control-plane only: the operator reconciles ClusterPolicy, it never
+      # touches a GPU. Chart already ships control-plane tolerations, so only
+      # the placement half is needed here.
+      nodeSelector:
+        kubernetes.io/hostname: controller
+    # NFD master/gc aggregate labels reported by the workers -- also pure
+    # control plane. The `worker` DaemonSet is deliberately NOT pinned: it is
+    # what discovers node hardware and must run on every node.
+    node-feature-discovery:
+      master:
+        nodeSelector:
+          kubernetes.io/hostname: controller
+      gc:
+        nodeSelector:
+          kubernetes.io/hostname: controller
+        # gc is the one subcomponent with no default control-plane toleration.
+        tolerations:
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
     driver:
       enabled: false  # Driver already installed on host via Ansible
     toolkit:

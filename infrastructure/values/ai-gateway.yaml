@@ -1,0 +1,15 @@
+# Values for the `aieg` Helm release (envoy-ai-gateway-system). See the note in
+# envoy-gateway.yaml -- this release is also outside Flux for now.
+#   helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm --version v0.2.0 \
+#     -n envoy-ai-gateway-system --reuse-values -f infrastructure/values/ai-gateway.yaml
+#
+# ai-gateway-controller reconciles AIGatewayRoute and patches its own admission
+# webhook -- pure control plane, and it exits(1) when the API server is
+# unreachable rather than retrying (225 restarts = a log of API downtime).
+controller:
+  nodeSelector:
+    kubernetes.io/hostname: controller
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule

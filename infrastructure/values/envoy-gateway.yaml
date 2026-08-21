@@ -1,0 +1,19 @@
+# Values for the `eg` Helm release (envoy-gateway-system).
+#
+# NOTE: `eg` and `aieg` are NOT yet Flux-managed -- they were installed with
+# plain `helm install` and their release secrets live in their own namespaces,
+# not flux-system. This file exists so the applied values are reproducible:
+#   helm upgrade eg oci://docker.io/envoyproxy/gateway-helm --version v1.6.7 \
+#     -n envoy-gateway-system --reuse-values -f infrastructure/values/envoy-gateway.yaml
+#
+# Placement: envoy-gateway is the Gateway API *control plane* -- it watches
+# Gateway/HTTPRoute and pushes xDS. No data path. Co-locate with the API server
+# it crashes without (exit 1 on `dial tcp 10.96.0.1:443: connection refused`).
+deployment:
+  pod:
+    nodeSelector:
+      kubernetes.io/hostname: controller
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
