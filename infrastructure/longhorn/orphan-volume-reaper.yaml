@@ -74,7 +74,10 @@ spec:
               effect: NoSchedule
           containers:
             - name: reaper
-              image: bitnami/kubectl:1.32.1
+              image: alpine/k8s:1.32.1
+              # NOT bitnami/kubectl -- Bitnami retired their Docker Hub catalog
+              # in 2025 and that tag no longer resolves. alpine/k8s is multi-arch
+              # and bundles bash + jq + kubectl.
               env:
                 - name: MAX_AGE_DAYS
                   value: "30"
@@ -87,29 +90,35 @@ spec:
               args:
                 - |
                   set -euo pipefail
-                  CUTOFF=$(date -u -d "-${MAX_AGE_DAYS} days" +%s)
-                  echo "reaper: cutoff=$(date -u -d @${CUTOFF} -Is) dry_run=${DRY_RUN}"
+                  echo "reaper: max_age_days=${MAX_AGE_DAYS} dry_run=${DRY_RUN}"
 
-                  # Volumes referenced by a live PVC. Printed one per line; a PVC
-                  # that is still Pending has no volumeName and simply yields a
-                  # blank, which grep -Fxq will never match a real volume name.
+                  # Volumes referenced by a live PVC. A Pending PVC has no
+                  # volumeName and yields a blank line, so drop empties --
+                  # otherwise an empty pattern would match everything below.
                   kubectl get pvc -A \
-                    -o jsonpath='{range .items[*]}{.spec.volumeName}{"\n"}{end}' > /tmp/live
+                    -o jsonpath='{range .items[*]}{.spec.volumeName}{"\n"}{end}' \
+                    | grep -v '^$' | sort -u > /tmp/live
+                  echo "reaper: $(wc -l < /tmp/live) volume(s) currently bound"
 
-                  kubectl -n longhorn-system get volumes.longhorn.io \
-                    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.state}{"\t"}{.status.kubernetesStatus.pvcName}{"\t"}{.status.kubernetesStatus.lastPVCRefAt}{"\n"}{end}' > /tmp/vols
+                  # Age filtering in jq, not date(1): this image ships busybox
+                  # date, which has no `-d "-30 days"`.
+                  kubectl -n longhorn-system get volumes.longhorn.io -o json \
+                    | jq -r --argjson maxage "${MAX_AGE_DAYS}" '
+                        .items[]
+                        | select(.status.state == "detached")
+                        | select((.status.kubernetesStatus.pvcName // "") | startswith("model-cache-"))
+                        | select((.status.kubernetesStatus.lastPVCRefAt // "") != "")
+                        | (.status.kubernetesStatus.lastPVCRefAt | fromdateiso8601) as $ref
+                        | select($ref < (now - ($maxage * 86400)))
+                        | "\(.metadata.name)\t\(.status.kubernetesStatus.pvcName)\t\(((now - $ref) / 86400) | floor)"
+                      ' > /tmp/candidates
 
                   reaped=0
-                  while IFS=$'\t' read -r name state pvc ref; do
+                  while IFS=$'\t' read -r name pvc age; do
                     [ -n "${name:-}" ] || continue
-                    grep -Fxq "$name" /tmp/live && continue          # still bound
-                    [ "$state" = "detached" ] || continue            # never touch attached
-                    case "$pvc" in model-cache-*) ;; *) continue ;; esac
-                    [ -n "${ref:-}" ] || continue                    # no deletion timestamp
-                    ts=$(date -u -d "$ref" +%s 2>/dev/null) || continue
-                    [ "$ts" -lt "$CUTOFF" ] || continue
-
-                    age=$(( ( $(date -u +%s) - ts ) / 86400 ))
+                    if grep -Fxq "$name" /tmp/live; then
+                      echo "SKIP       $name (still bound)"; continue
+                    fi
                     if [ "$DRY_RUN" = "true" ]; then
                       echo "WOULD REAP $name (pvc=$pvc, orphaned ${age}d)"
                     else
@@ -118,5 +127,5 @@ spec:
                       kubectl -n longhorn-system delete volumes.longhorn.io "$name" --timeout=120s
                     fi
                     reaped=$((reaped+1))
-                  done < /tmp/vols
+                  done < /tmp/candidates
                   echo "reaper: ${reaped} volume(s) matched"
