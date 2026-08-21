@@ -1,0 +1,122 @@
+# Reaps orphaned Longhorn model-cache volumes.
+#
+# The `longhorn-model-cache` StorageClass is reclaimPolicy: Retain, so deleting
+# a model PVC leaves its volume (and its data) behind on purpose -- re-pulling a
+# 300GB cache is expensive. Nothing ever collected them: by 2026-08-21 twenty
+# orphans held 1,524GB of disk and 3,760GB of scheduling quota, and spark-01 was
+# at 93% scheduled with 847GB of unusable free space.
+#
+# Deletion predicate (ALL must hold):
+#   1. No PVC in the cluster references the volume (spec.volumeName join)
+#   2. state == detached          -- never touch an attached volume
+#   3. pvcName starts with `model-cache-`  -- re-downloadable data only
+#   4. lastPVCRefAt older than MAX_AGE_DAYS
+# Set DRY_RUN=true to report without deleting.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orphan-volume-reaper
+  namespace: longhorn-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: orphan-volume-reaper
+rules:
+  - apiGroups: ["longhorn.io"]
+    resources: ["volumes"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: orphan-volume-reaper
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: orphan-volume-reaper
+subjects:
+  - kind: ServiceAccount
+    name: orphan-volume-reaper
+    namespace: longhorn-system
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: orphan-volume-reaper
+  namespace: longhorn-system
+spec:
+  schedule: "30 4 * * 0"          # Sundays 04:30 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: orphan-volume-reaper
+          restartPolicy: OnFailure
+          # controller is amd64, the sparks are arm64; pin so the image arch is
+          # predictable and the job never competes with model pods for memory.
+          nodeSelector:
+            kubernetes.io/hostname: controller
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+          containers:
+            - name: reaper
+              image: bitnami/kubectl:1.32.1
+              env:
+                - name: MAX_AGE_DAYS
+                  value: "30"
+                - name: DRY_RUN
+                  value: "false"
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  CUTOFF=$(date -u -d "-${MAX_AGE_DAYS} days" +%s)
+                  echo "reaper: cutoff=$(date -u -d @${CUTOFF} -Is) dry_run=${DRY_RUN}"
+
+                  # Volumes referenced by a live PVC. Printed one per line; a PVC
+                  # that is still Pending has no volumeName and simply yields a
+                  # blank, which grep -Fxq will never match a real volume name.
+                  kubectl get pvc -A \
+                    -o jsonpath='{range .items[*]}{.spec.volumeName}{"\n"}{end}' > /tmp/live
+
+                  kubectl -n longhorn-system get volumes.longhorn.io \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.state}{"\t"}{.status.kubernetesStatus.pvcName}{"\t"}{.status.kubernetesStatus.lastPVCRefAt}{"\n"}{end}' > /tmp/vols
+
+                  reaped=0
+                  while IFS=$'\t' read -r name state pvc ref; do
+                    [ -n "${name:-}" ] || continue
+                    grep -Fxq "$name" /tmp/live && continue          # still bound
+                    [ "$state" = "detached" ] || continue            # never touch attached
+                    case "$pvc" in model-cache-*) ;; *) continue ;; esac
+                    [ -n "${ref:-}" ] || continue                    # no deletion timestamp
+                    ts=$(date -u -d "$ref" +%s 2>/dev/null) || continue
+                    [ "$ts" -lt "$CUTOFF" ] || continue
+
+                    age=$(( ( $(date -u +%s) - ts ) / 86400 ))
+                    if [ "$DRY_RUN" = "true" ]; then
+                      echo "WOULD REAP $name (pvc=$pvc, orphaned ${age}d)"
+                    else
+                      echo "REAPING    $name (pvc=$pvc, orphaned ${age}d)"
+                      kubectl delete pv "$name" --ignore-not-found --wait=false
+                      kubectl -n longhorn-system delete volumes.longhorn.io "$name" --timeout=120s
+                    fi
+                    reaped=$((reaped+1))
+                  done < /tmp/vols
+                  echo "reaper: ${reaped} volume(s) matched"
