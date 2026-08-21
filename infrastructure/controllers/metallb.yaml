@@ -28,3 +28,19 @@ spec:
   upgrade:
     remediation:
       retries: 3
+  values:
+    # Pin only the IPAM controller to the control-plane node, matching the
+    # Flux controllers. Keeps LoadBalancer IP allocation alive when a GPU
+    # node goes NotReady, and keeps the GPU nodes for GPU work.
+    controller:
+      nodeSelector:
+        kubernetes.io/hostname: controller
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+    # NOTE: the speaker DaemonSet is deliberately left untouched. It is the
+    # L2 data path -- it must run on every node that can answer ARP for the
+    # VIPs. `controller` additionally carries the
+    # node.kubernetes.io/exclude-from-external-load-balancers label, so
+    # MetalLB will not elect it as announcer anyway.
