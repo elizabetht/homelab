@@ -17,3 +17,14 @@ deployment:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
         effect: NoSchedule
+
+# Backend extension API must be ON. The AI Gateway's extProc filter targets a
+# `Backend` resource (token-labs/envoy-ai-gateway-extproc-backend); with
+# extensionApis empty, envoy-gateway does not watch Backend at all and reports
+# "backend not found", which invalidates the gateway-level
+# EnvoyExtensionPolicy. Envoy Gateway then serves a 500 direct_response for
+# every AI route -- no upstream contacted. Lost in the 2026-08-17 eg upgrade.
+config:
+  envoyGateway:
+    extensionApis:
+      enableBackend: true
