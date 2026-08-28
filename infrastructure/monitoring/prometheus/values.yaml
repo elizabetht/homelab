@@ -31,6 +31,27 @@ defaultRules:
     prometheus: true
     prometheusOperator: true
 
+# Control-plane components this cluster does not expose metrics for.
+#
+# defaultRules above already turns OFF their *alerts*, but the component blocks
+# were left enabled, so the chart kept shipping their ServiceMonitors and
+# dashboards. The result was four dashboards permanently reading "No data":
+#   etcd                          0/16 panels  (etcd_server_has_leader: 0 series)
+#   Kubernetes / Scheduler        1/18 panels
+#   Kubernetes / Proxy            1/14 panels
+#   Kubernetes / Controller Mgr   1/13 panels
+# kubeadm binds these to 127.0.0.1, so nothing can scrape them without
+# reconfiguring the control plane. Disabling removes both the futile scrape
+# targets and the empty dashboards.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeScheduler:
+  enabled: false
+
 alertmanager:
   enabled: true
   alertmanagerSpec:
@@ -72,6 +93,12 @@ grafana:
     type: LoadBalancer
     loadBalancerIP: 192.168.1.206
     port: 80
+  # The chart ships a "Grafana Overview" dashboard but does not scrape Grafana
+  # by default, so all 7 of its panels read "No data" (grafana_build_info had
+  # 0 series). Grafana exposes /metrics already -- it just needed a target.
+  # Enabling this is cheaper than deleting a dashboard that becomes useful.
+  serviceMonitor:
+    enabled: true
   sidecar:
     dashboards:
       enabled: true
