@@ -15,7 +15,7 @@ spec:
   chart:
     spec:
       chart: gpu-operator
-      version: "v26.7.0"
+      version: "v26.7.1"
       sourceRef:
         kind: HelmRepository
         name: nvidia
@@ -59,10 +59,17 @@ spec:
       enabled: false  # Already installed on host via Ansible
     devicePlugin:
       enabled: true
+      # Preserve the existing per-node exclusive/time-slicing selection.
+      config:
+        name: time-slicing-config
+        default: any
     dcgm:
       enabled: true
     dcgmExporter:
       enabled: true
+      # Keep the verified custom GB10 field list during chart upgrades.
+      config:
+        name: dcgm-metrics-config
       serviceMonitor:
         enabled: true
     migManager:
