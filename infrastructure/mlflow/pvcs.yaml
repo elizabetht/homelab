@@ -1,0 +1,47 @@
+{
+  "apiVersion": "v1",
+  "kind": "PersistentVolumeClaim",
+  "metadata": {
+    "finalizers": [
+      "kubernetes.io/pvc-protection"
+    ],
+    "name": "mlflow-postgres",
+    "namespace": "mlflow"
+  },
+  "spec": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
+    "resources": {
+      "requests": {
+        "storage": "10Gi"
+      }
+    },
+    "storageClassName": "longhorn",
+    "volumeMode": "Filesystem"
+  }
+}
+---
+{
+  "apiVersion": "v1",
+  "kind": "PersistentVolumeClaim",
+  "metadata": {
+    "finalizers": [
+      "kubernetes.io/pvc-protection"
+    ],
+    "name": "mlflow-s3",
+    "namespace": "mlflow"
+  },
+  "spec": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
+    "resources": {
+      "requests": {
+        "storage": "50Gi"
+      }
+    },
+    "storageClassName": "longhorn",
+    "volumeMode": "Filesystem"
+  }
+}

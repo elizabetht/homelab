@@ -1,6 +1,16 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: mlflow
-  labels:
-    app.kubernetes.io/name: mlflow
+{
+  "apiVersion": "v1",
+  "kind": "Namespace",
+  "metadata": {
+    "labels": {
+      "app.kubernetes.io/name": "mlflow",
+      "kubernetes.io/metadata.name": "mlflow"
+    },
+    "name": "mlflow"
+  },
+  "spec": {
+    "finalizers": [
+      "kubernetes"
+    ]
+  }
+}

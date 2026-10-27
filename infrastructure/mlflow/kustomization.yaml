@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: mlflow
 resources:
   - namespace.yaml
-  - pvc.yaml
-  - deployment.yaml
-  - service.yaml
+  - configmap.yaml
+  - pvcs.yaml
+  - deployments.yaml
+  - services.yaml
