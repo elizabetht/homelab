@@ -86,15 +86,21 @@
               }
             ],
             "readinessProbe": {
-              "failureThreshold": 3,
               "httpGet": {
-                "path": "/health",
+                "path": "/mlflow/health",
                 "port": 5000,
-                "scheme": "HTTP"
+                "scheme": "HTTP",
+                "httpHeaders": [
+                  {
+                    "name": "Host",
+                    "value": "localhost:5000"
+                  }
+                ]
               },
               "periodSeconds": 5,
-              "successThreshold": 1,
-              "timeoutSeconds": 1
+              "timeoutSeconds": 3,
+              "failureThreshold": 3,
+              "successThreshold": 1
             },
             "resources": {
               "limits": {
@@ -107,15 +113,21 @@
               }
             },
             "startupProbe": {
-              "failureThreshold": 60,
               "httpGet": {
-                "path": "/health",
+                "path": "/mlflow/health",
                 "port": 5000,
-                "scheme": "HTTP"
+                "scheme": "HTTP",
+                "httpHeaders": [
+                  {
+                    "name": "Host",
+                    "value": "localhost:5000"
+                  }
+                ]
               },
               "periodSeconds": 5,
-              "successThreshold": 1,
-              "timeoutSeconds": 1
+              "timeoutSeconds": 3,
+              "failureThreshold": 60,
+              "successThreshold": 1
             },
             "terminationMessagePath": "/dev/termination-log",
             "terminationMessagePolicy": "File",
