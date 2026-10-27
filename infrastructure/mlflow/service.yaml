@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  labels:
+    app.kubernetes.io/name: mlflow
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mlflow
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
+  # Access: kubectl -n mlflow port-forward svc/mlflow 5000:5000
+  # (e.g. over Tailscale/SSH), or add a MetalLB/Ingress exposure here
+  # if the UI should be reachable on the LAN.
